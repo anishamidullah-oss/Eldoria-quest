@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
@@ -52,6 +53,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,7 +76,8 @@ fun TitleMenu(
     onStartGame: () -> Unit,
     onContinueGame: () -> Unit,
     onOpenGuide: () -> Unit,
-    onOpenCharacterSheet: () -> Unit
+    onOpenCharacterSheet: () -> Unit,
+    onOpenInventory: () -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -262,6 +265,31 @@ fun TitleMenu(
                 }
 
                 OutlinedButton(
+                    onClick = onOpenInventory,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .testTag("title_inventory_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.horizontalGradient(listOf(Color(0xFF00E5FF), Color(0xFF0288D1))))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Inventory2,
+                        contentDescription = null,
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "PLAYER INVENTORY (ROOM DB)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF00E5FF)
+                    )
+                }
+
+                OutlinedButton(
                     onClick = onOpenGuide,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -319,6 +347,7 @@ fun PauseMenu(
     onRestartFull: () -> Unit,
     onOpenGuide: () -> Unit,
     onOpenCharacterSheet: () -> Unit,
+    onOpenInventory: () -> Unit = {},
     onExitToTitle: () -> Unit
 ) {
     var saveFeedbackText by remember { mutableStateOf<String?>(null) }
@@ -392,6 +421,20 @@ fun PauseMenu(
                     Icon(imageVector = Icons.Default.Assignment, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(text = "CHARACTER & QUEST LOG", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Button(
+                    onClick = onOpenInventory,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .testTag("pause_inventory_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF78350F))
+                ) {
+                    Icon(imageVector = Icons.Default.Inventory2, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "PLAYER INVENTORY (ROOM DB)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
                 }
 
                 Button(
@@ -639,7 +682,7 @@ fun CharacterAndQuestDialog(
                     }
                 }
 
-                // 3 Tabs: Stats & Gear, Main Quests, Side Quests & Secrets
+                // 4 Tabs: Stats & Gear, Room Inventory, Main Quests, Side Quests & Secrets
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = Color(0xFF0F172A),
@@ -654,17 +697,22 @@ fun CharacterAndQuestDialog(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("STATS & GEAR", fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+                        text = { Text("STATS & GEAR", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text("MAIN STORY", fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+                        text = { Text("INVENTORY (DB)", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
                     )
                     Tab(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        text = { Text("SIDE QUESTS & SECRETS", fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+                        text = { Text("MAIN STORY", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
+                    )
+                    Tab(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = { Text("SIDE QUESTS", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
                     )
                 }
 
@@ -768,7 +816,147 @@ fun CharacterAndQuestDialog(
                         }
                     }
                     1 -> {
-                        // TAB 1: Complete 10-Mission Story Quest Log
+                        // TAB 1: Local Room Database Inventory
+                        val roomItems by engine.inventoryRepository.allItems.collectAsStateWithLifecycle(initialValue = emptyList())
+                        val totalUnits by engine.inventoryRepository.totalQuantity.collectAsStateWithLifecycle(initialValue = 0)
+                        var inventoryFeedback by remember { mutableStateOf<String?>(null) }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF0F172A))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Inventory2,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFD700),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "LOCAL ROOM SQLITE VAULT",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFFD700)
+                                    )
+                                }
+                                Text(
+                                    text = "${roomItems.size} Types • ${totalUnits ?: 0} Items",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF38BDF8),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            inventoryFeedback?.let { msg ->
+                                Text(
+                                    text = msg,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF34D399),
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+
+                            if (roomItems.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Vault is currently empty. Explore the realm to harvest items!",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
+                            } else {
+                                for (item in roomItems) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFF0F172A))
+                                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(10.dp))
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = item.name,
+                                                    fontSize = 12.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                                Text(
+                                                    text = "(${item.rarity})",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = getRarityColor(item.rarity)
+                                                )
+                                            }
+                                            Text(
+                                                text = item.description,
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFF94A3B8),
+                                                lineHeight = 14.sp
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFF1E293B))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "x${item.quantity}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFFFFD700)
+                                                )
+                                            }
+
+                                            if (item.isUsable) {
+                                                Button(
+                                                    onClick = {
+                                                        val ok = engine.useInventoryItem(item.itemKey)
+                                                        inventoryFeedback = if (ok) "Used ${item.name}!" else "Cannot use right now."
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    modifier = Modifier.height(28.dp),
+                                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                                ) {
+                                                    Text(text = "USE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    2 -> {
+                        // TAB 2: Complete 10-Mission Story Quest Log
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             for (q in engine.questManager.quests) {
                                 val isCompleted = q.isCompleted || player.completedQuestIds.contains(q.id)
@@ -790,8 +978,8 @@ fun CharacterAndQuestDialog(
                             }
                         }
                     }
-                    2 -> {
-                        // TAB 2: Side Quests & Secrets
+                    3 -> {
+                        // TAB 3: Side Quests & Secrets
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             // Secrets & Puzzles Overview Banner
                             Row(

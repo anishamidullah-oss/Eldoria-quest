@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NavigateNext
@@ -38,6 +39,8 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +66,7 @@ import kotlin.math.min
 fun GameHud(
     engine: GameEngine,
     onPauseClick: () -> Unit,
+    onInventoryClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val player = engine.player
@@ -373,6 +377,43 @@ fun GameHud(
                             color = Color(0xFFE0F7FA),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Backpack / Inventory Button (Room Database items)
+            val inventoryCount by engine.inventoryRepository.itemCount.collectAsStateWithLifecycle(initialValue = 0)
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .testTag("backpack_button")
+                    .clip(CircleShape)
+                    .background(Color(0xCC78350F))
+                    .border(1.2.dp, Color(0xFFFFD700), CircleShape)
+                    .clickable { onInventoryClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Inventory2,
+                    contentDescription = "Open Inventory",
+                    tint = Color(0xFFFFD700),
+                    modifier = Modifier.size(17.dp)
+                )
+                if (inventoryCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(13.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE11D48)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (inventoryCount > 9) "9+" else "$inventoryCount",
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }

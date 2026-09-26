@@ -1,0 +1,162 @@
+name: Build Android APK & GitHub Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'APK Build Type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+      create_release:
+        description: 'Publish a GitHub Release with downloadable APK'
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: 'Custom Release Tag (e.g. v1.0.0, optional)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build & Package APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Prepare Secrets Configuration (.env)
+        run: |
+          if [ ! -f .env ]; then
+            if [ -f .env.example ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+          fi
+
+      - name: Prepare Debug Keystore
+        run: |
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x ./gradlew
+
+      - name: Build Debug APK
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: ./gradlew assembleRelease --stacktrace || ./gradlew assembleDebug --stacktrace
+
+      - name: Organize APK Artifacts
+        id: organize_apks
+        run: |
+          mkdir -p build_outputs
+          
+          # Find generated debug APK
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
+            cp "$DEBUG_APK" build_outputs/TheLostKingdom-debug.apk
+            echo "debug_apk_path=build_outputs/TheLostKingdom-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "Found debug APK at $DEBUG_APK"
+          fi
+
+          # Find generated release APK if present
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
+            cp "$RELEASE_APK" build_outputs/TheLostKingdom-release.apk
+            echo "release_apk_path=build_outputs/TheLostKingdom-release.apk" >> "$GITHUB_OUTPUT"
+            echo "Found release APK at $RELEASE_APK"
+          fi
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheLostKingdom-Android-APK
+          path: build_outputs/*.apk
+          retention-days: 30
+
+      - name: Determine Release Tag & Trigger Condition
+        id: release_check
+        run: |
+          IS_TAG=false
+          TAG_NAME=""
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            IS_TAG=true
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          elif [[ "${{ github.event.inputs.create_release }}" == "true" ]]; then
+            IS_TAG=true
+            if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+              TAG_NAME="${{ github.event.inputs.release_tag }}"
+            else
+              TAG_NAME="v1.0.0-$(date +'%Y%m%d%H%M')"
+            fi
+          fi
+
+          echo "is_release=$IS_TAG" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release with Direct APK Download
+        if: steps.release_check.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_check.outputs.tag_name }}
+          name: Release ${{ steps.release_check.outputs.tag_name }}
+          body: |
+            ### 🎮 The Lost Kingdom - Android APK Release
+
+            Welcome to **The Lost Kingdom** (The Blade of Ancient Realms)!
+
+            #### ✨ What's Included:
+            - **Smooth Camera Follow System**: Bounded platformer camera tracking the player across 8 vast biomes.
+            - **Multi-layer Parallax Rendering**: Foreground, midground, and multi-speed background layers with velocity particles.
+            - **Local Room Database Player Inventory**: Persistent SQLite inventory managing gold, crystals, elixirs, keys, materials, and legendary boss relics.
+            - **100% Offline Single-Player Gameplay**: No cloud dependency or connection required to play.
+
+            #### 📲 Download & Installation:
+            1. Download the attached `.apk` file below directly to your Android device.
+            2. Open the file and allow *Install from unknown sources* if prompted.
+            3. Enjoy the adventure!
+          files: build_outputs/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

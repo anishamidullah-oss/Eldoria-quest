@@ -32,6 +32,7 @@ fun GameApp(
 
     var showGuideDialog by remember { mutableStateOf(false) }
     var showCharacterSheetDialog by remember { mutableStateOf(false) }
+    var showInventoryDialog by remember { mutableStateOf(false) }
     var frameTick by remember { mutableStateOf(0L) }
 
     // High-performance 60 FPS game tick loop
@@ -53,6 +54,7 @@ fun GameApp(
     // Back button handling
     BackHandler {
         when {
+            showInventoryDialog -> showInventoryDialog = false
             showGuideDialog -> showGuideDialog = false
             showCharacterSheetDialog -> showCharacterSheetDialog = false
             engine.activeDialogue != null -> {
@@ -84,7 +86,8 @@ fun GameApp(
         if (engine.currentScreen == GameScreen.PLAYING) {
             GameHud(
                 engine = engine,
-                onPauseClick = { engine.currentScreen = GameScreen.PAUSED }
+                onPauseClick = { engine.currentScreen = GameScreen.PAUSED },
+                onInventoryClick = { showInventoryDialog = true }
             )
 
             val contextualLabel = when {
@@ -126,7 +129,8 @@ fun GameApp(
                     onStartGame = { engine.startNewGame() },
                     onContinueGame = { engine.continueSavedGame() },
                     onOpenGuide = { showGuideDialog = true },
-                    onOpenCharacterSheet = { showCharacterSheetDialog = true }
+                    onOpenCharacterSheet = { showCharacterSheetDialog = true },
+                    onOpenInventory = { showInventoryDialog = true }
                 )
             }
             GameScreen.PAUSED -> {
@@ -137,6 +141,7 @@ fun GameApp(
                     onRestartFull = { engine.startNewGame() },
                     onOpenGuide = { showGuideDialog = true },
                     onOpenCharacterSheet = { showCharacterSheetDialog = true },
+                    onOpenInventory = { showInventoryDialog = true },
                     onExitToTitle = { engine.currentScreen = GameScreen.TITLE }
                 )
             }
@@ -168,6 +173,14 @@ fun GameApp(
             CharacterAndQuestDialog(
                 engine = engine,
                 onClose = { showCharacterSheetDialog = false }
+            )
+        }
+
+        // Room Database Player Inventory Dialog
+        if (showInventoryDialog) {
+            InventoryDialog(
+                engine = engine,
+                onClose = { showInventoryDialog = false }
             )
         }
     }

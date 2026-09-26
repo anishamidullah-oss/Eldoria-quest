@@ -55,16 +55,19 @@ class GameRenderer {
             scale(cameraScale, cameraScale, Offset.Zero)
             translate(left = -camX, top = -camY)
         }) {
-            // 1. Multi-Layer Parallax Background with Atmospheric God Rays & Mountains
-            EnvironmentRenderer.drawParallaxBackground(this, camX, camY, viewW, viewH, engine.gameTime)
+            // 1. Multi-Layer Parallax Backgrounds (Deep Celestial Sky, High Clouds, Distant Mountain Ridges, Mid-Background)
+            ParallaxRenderer.drawBackgroundLayers(this, engine, camX, camY, viewW, viewH, engine.gameTime)
 
-            // 2. High-Detail Hand-Painted 2D World Tiles (Grass, Earth, Stone, Wood, Snow, Crystals)
+            // 2. Near-Midground Scenery Layer (Gnarled Trees, Ancient Pillars, Cavern Columns, Banners at 0.68x)
+            ParallaxRenderer.drawMidgroundLayer(this, engine, camX, camY, viewW, viewH, engine.gameTime)
+
+            // 3. High-Detail Hand-Painted 2D World Tiles (Grass, Earth, Stone, Wood, Snow, Crystals - 1.00x Gameplay Plane)
             EnvironmentRenderer.drawWorldTiles(this, engine, camX, camY, viewW, viewH, engine.gameTime)
 
-            // 3. Puzzle Mechanisms (Moving Platforms, Pressure Plates, Levers, Gates, Torches, Walls)
+            // 4. Puzzle Mechanisms (Moving Platforms, Pressure Plates, Levers, Gates, Torches, Walls)
             PuzzleRenderer.renderPuzzles(this, engine.world, engine.gameTime)
 
-            // 4. Interactive NPCs (Elder, Blacksmith, Merchant, Guard, Traveler, Explorer, Scholar, Hermit)
+            // 5. Interactive NPCs (Elder, Blacksmith, Merchant, Guard, Traveler, Explorer, Scholar, Hermit)
             npcRenderer.renderNPCs(
                 drawScope = this,
                 npcs = engine.npcs,
@@ -75,21 +78,24 @@ class GameRenderer {
                 playerPos = engine.player.pos
             )
 
-            // 5. Collectibles (Mana Crystals, Gold Coins, Chests, Keys, Heart Fragments, Lore Tablets, Secrets)
+            // 6. Collectibles (Mana Crystals, Gold Coins, Chests, Keys, Heart Fragments, Lore Tablets, Secrets)
             drawCollectibles(this, engine.collectibles, engine.gameTime)
 
-            // 6. Enemies & Bosses (Moss Slime, Wolf, Wurm, Lich, Stone Giant, Skeleton Knight, Ruin Colossus)
+            // 7. Enemies & Bosses (Moss Slime, Wolf, Wurm, Lich, Stone Giant, Skeleton Knight, Ruin Colossus)
             for (enemy in engine.enemies) {
                 EnemyRenderer.draw(this, enemy, 0f, 0f, engine.gameTime)
             }
 
-            // 7. Human Fantasy Adventurer Player Character (Detailed Anatomy, Armor & Weapon)
+            // 8. Human Fantasy Adventurer Player Character (Detailed Anatomy, Armor & Weapon)
             PlayerCharacterRenderer.draw(this, engine.player, 0f, 0f, engine.gameTime)
 
-            // 8. Foreground Canopy & Hanging Vines Atmosphere
-            EnvironmentRenderer.drawForegroundAtmosphere(this, camX, camY, viewW, viewH, engine.gameTime)
+            // 9. Near Foreground Layer (Overhanging Canopies, Moss Fronds, Foreground Pillars at 1.25x in front of Player)
+            ParallaxRenderer.drawNearForegroundLayer(this, engine, camX, camY, viewW, viewH, engine.gameTime)
 
-            // 9. Particles & Floating Combat Damage Numbers
+            // 10. Extreme Foreground Layer (Close Silhouette Foliage & High-Speed Velocity Drifting Particles at 1.55x)
+            ParallaxRenderer.drawExtremeForegroundLayer(this, engine, camX, camY, viewW, viewH, engine.gameTime)
+
+            // 11. Particles & Floating Combat Damage Numbers
             drawParticles(this, engine.particles, textMeasurer)
         }
     }

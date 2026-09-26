@@ -27,6 +27,13 @@ import com.example.game.quest.SideQuestManager
 import com.example.game.save.PlayerSaveState
 import com.example.game.save.SaveManager
 import com.example.game.world.WorldMap
+import com.example.game.inventory.data.InventoryDatabase
+import com.example.game.inventory.data.InventoryItemEntity
+import com.example.game.inventory.data.InventoryRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlin.math.hypot
 import kotlin.random.Random
 
@@ -34,6 +41,11 @@ class GameEngine(context: Context) {
     val soundManager = SoundManager()
     val soundEngine: SoundManager get() = soundManager
     val saveManager = SaveManager(context)
+
+    // Local Room Database for Player Inventory
+    val inventoryDatabase = InventoryDatabase.getInstance(context)
+    val inventoryRepository = InventoryRepository(inventoryDatabase.inventoryDao())
+    val engineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     var currentScreen = GameScreen.TITLE
     var world = WorldMap()
@@ -99,6 +111,9 @@ class GameEngine(context: Context) {
 
     init {
         soundEngine.isMuted = !saveManager.isSoundEnabled
+        engineScope.launch {
+            inventoryRepository.seedStartingInventoryIfEmpty()
+        }
         startNewGame()
     }
 
@@ -385,6 +400,9 @@ class GameEngine(context: Context) {
         if (currentScreen == GameScreen.PLAYING) {
             val used = player.usePotion()
             if (used) {
+                engineScope.launch {
+                    inventoryRepository.consumeOrUseItem("potion_health", 1)
+                }
                 soundEngine.playCrystal()
                 spawnPickupSparkles(player.pos, Color(0xFFFF3366))
                 particles.add(
@@ -409,6 +427,9 @@ class GameEngine(context: Context) {
         if (currentScreen == GameScreen.PLAYING) {
             val used = player.useSwiftnessPotion()
             if (used) {
+                engineScope.launch {
+                    inventoryRepository.consumeOrUseItem("potion_swiftness", 1)
+                }
                 soundManager.onSpeedBuffApplied()
                 for (i in 0..8) {
                     particles.add(
@@ -439,6 +460,42 @@ class GameEngine(context: Context) {
             }
         }
         return false
+    }
+
+    fun useInventoryItem(itemKey: String): Boolean {
+        return when {
+            itemKey == "potion_health" -> usePotion()
+            itemKey == "potion_swiftness" -> useSwiftnessPotion()
+            itemKey == "crystal_mana" -> {
+                if (player.health < player.maxHealth) {
+                    player.heal(20)
+                    soundEngine.playCrystal()
+                    spawnPickupSparkles(player.pos, Color(0xFF00E5FF))
+                    particles.add(
+                        Particle(
+                            pos = Vector2D(player.pos.x + player.width * 0.5f - 10f, player.pos.y - 15f),
+                            velocity = Vector2D(0f, -60f),
+                            life = 0.8f,
+                            maxLife = 0.8f,
+                            color = Color(0xFF00E5FF),
+                            size = 14f,
+                            type = ParticleType.DAMAGE_TEXT,
+                            text = "+20 HP (MANA)"
+                        )
+                    )
+                    engineScope.launch {
+                        inventoryRepository.consumeOrUseItem("crystal_mana", 1)
+                    }
+                    true
+                } else false
+            }
+            itemKey == "quest_map_parchment" -> {
+                activeLoreText = "CARTOGRAPHER'S RECORD: Hidden underground lever passages exist at columns 80, 180, and 260. Checkpoint altars heal to full vitality."
+                soundEngine.playCrystal()
+                true
+            }
+            else -> false
+        }
     }
 
     fun applyStatusEffect(effect: StatusEffect) {
@@ -1030,16 +1087,55 @@ class GameEngine(context: Context) {
                         sideQuestManager.updateProgress("sq_forest_beast", 1)
                         questCompletionBanner = "QUEST OBJECTIVE UPDATED: Beast Defeated!"
                         questCompletionTimer = 3.5f
+                        engineScope.launch {
+                            inventoryRepository.addItem(
+                                itemKey = "trophy_wolf_pelt",
+                                name = "Dire Wolf Alpha Pelt",
+                                category = "MATERIAL",
+                                description = "Thick winter fur brimming with primal alpha wolf strength.",
+                                quantity = 1,
+                                rarity = "EPIC",
+                                value = 250,
+                                isUsable = false,
+                                iconType = "relic"
+                            )
+                        }
                     }
                     "boss_frost_wurm" -> {
                         sideQuestManager.updateProgress("sq_glacial_menace", 1)
                         questCompletionBanner = "QUEST OBJECTIVE UPDATED: Wurm Slain!"
                         questCompletionTimer = 3.5f
+                        engineScope.launch {
+                            inventoryRepository.addItem(
+                                itemKey = "trophy_frost_core",
+                                name = "Glacial Wurm Frost Core",
+                                category = "MATERIAL",
+                                description = "Sub-zero crystalline heart extracted from the subterranean frost wyrm.",
+                                quantity = 1,
+                                rarity = "EPIC",
+                                value = 400,
+                                isUsable = false,
+                                iconType = "crystal"
+                            )
+                        }
                     }
                     "boss_shadow_lich" -> {
                         sideQuestManager.updateProgress("sq_phantom_king", 1)
                         questCompletionBanner = "QUEST OBJECTIVE UPDATED: Lich Vanquished!"
                         questCompletionTimer = 3.5f
+                        engineScope.launch {
+                            inventoryRepository.addItem(
+                                itemKey = "trophy_lich_crown",
+                                name = "Crown of the Phantom King",
+                                category = "RELIC",
+                                description = "Spectral silver circlet worn by the ancient fallen monarch of Eldoria.",
+                                quantity = 1,
+                                rarity = "LEGENDARY",
+                                value = 1000,
+                                isUsable = false,
+                                iconType = "relic"
+                            )
+                        }
                     }
                 }
             },
@@ -1150,6 +1246,19 @@ class GameEngine(context: Context) {
                 player.score += c.value * 10
                 soundEngine.playCoin()
                 spawnPickupSparkles(c.pos, Color(0xFFFFD700))
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "coin_gold",
+                        name = "Gold Coins",
+                        category = "TREASURE",
+                        description = "Shining realm currency minted during the golden age of Eldoria.",
+                        quantity = c.value,
+                        rarity = "COMMON",
+                        value = 1,
+                        isUsable = false,
+                        iconType = "coin"
+                    )
+                }
             }
             CollectibleType.MANA_CRYSTAL -> {
                 c.isCollected = true
@@ -1159,6 +1268,19 @@ class GameEngine(context: Context) {
                 player.heal(20)
                 soundEngine.playCrystal()
                 spawnPickupSparkles(c.pos, Color(0xFF00E5FF))
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "crystal_mana",
+                        name = "Aether Crystal",
+                        category = "MATERIAL",
+                        description = "Vibrant mana cluster vibrating with ancient atmospheric energy. Can be crushed to heal 20 HP.",
+                        quantity = 1,
+                        rarity = "UNCOMMON",
+                        value = 25,
+                        isUsable = true,
+                        iconType = "crystal"
+                    )
+                }
             }
             CollectibleType.HEALTH_POTION -> {
                 c.isCollected = true
@@ -1169,6 +1291,19 @@ class GameEngine(context: Context) {
                 }
                 soundEngine.playCrystal()
                 spawnPickupSparkles(c.pos, Color(0xFFFF3366))
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "potion_health",
+                        name = "Life Elixir",
+                        category = "CONSUMABLE",
+                        description = "Standard apothecary restorative draught brewing elderberries and spring water. Restores 45 HP instantly.",
+                        quantity = 1,
+                        rarity = "COMMON",
+                        value = 20,
+                        isUsable = true,
+                        iconType = "potion_health"
+                    )
+                }
             }
             CollectibleType.ANCIENT_KEY -> {
                 c.isCollected = true
@@ -1188,6 +1323,19 @@ class GameEngine(context: Context) {
                         text = "ANCIENT KEY (${player.citadelKeysCount}/3)!"
                     )
                 )
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "key_citadel_${player.citadelKeysCount}",
+                        name = "Citadel Key #${player.citadelKeysCount}",
+                        category = "KEY_ITEM",
+                        description = "Heavy bronze key forged by the First Wardens. Required to unlock the Stormgate Keep.",
+                        quantity = 1,
+                        rarity = "RARE",
+                        value = 100,
+                        isUsable = false,
+                        iconType = "key"
+                    )
+                }
                 if (questManager.currentQuest?.id == 9) {
                     questManager.updateProgress(9, 1)
                     if (player.citadelKeysCount >= 3) {
@@ -1216,6 +1364,19 @@ class GameEngine(context: Context) {
                         text = "HEART OF AETHER FRAGMENT CLAIMED!"
                     )
                 )
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "relic_heart_fragment",
+                        name = "Heart of Aether Fragment",
+                        category = "RELIC",
+                        description = "Sacred crystalline shard bestowing +30 permanent Maximum Vitality to its bearer.",
+                        quantity = 1,
+                        rarity = "LEGENDARY",
+                        value = 500,
+                        isUsable = false,
+                        iconType = "heart"
+                    )
+                }
                 if (questManager.currentQuest?.id == 7) {
                     onQuestObjectiveAchieved(7)
                 }
@@ -1233,6 +1394,19 @@ class GameEngine(context: Context) {
                 triggerScreenShake(8f)
                 spawnPickupSparkles(c.pos, Color(0xFFFFD700))
                 sideQuestManager.updateProgress("sq_lost_traveler", 1)
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "quest_brass_compass",
+                        name = "Lost Traveler's Brass Compass",
+                        category = "KEY_ITEM",
+                        description = "Intricate navigational device dropped by a wandering traveler in the whispering woods.",
+                        quantity = 1,
+                        rarity = "RARE",
+                        value = 150,
+                        isUsable = false,
+                        iconType = "compass"
+                    )
+                }
                 particles.add(
                     Particle(
                         pos = Vector2D(c.pos.x - 20f, c.pos.y - 20f),
@@ -1256,6 +1430,19 @@ class GameEngine(context: Context) {
                 triggerScreenShake(8f)
                 spawnPickupSparkles(c.pos, Color(0xFFFFE082))
                 sideQuestManager.updateProgress("sq_old_map", 1)
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "quest_map_parchment",
+                        name = "Cartographer's Map Parchment",
+                        category = "KEY_ITEM",
+                        description = "Hand-scribed chart pointing out forgotten caverns and secret lever pathways.",
+                        quantity = 1,
+                        rarity = "RARE",
+                        value = 150,
+                        isUsable = true,
+                        iconType = "map"
+                    )
+                }
                 particles.add(
                     Particle(
                         pos = Vector2D(c.pos.x - 20f, c.pos.y - 20f),
@@ -1279,6 +1466,19 @@ class GameEngine(context: Context) {
                 triggerScreenShake(8f)
                 spawnPickupSparkles(c.pos, Color(0xFF81D4FA))
                 sideQuestManager.updateProgress("sq_missing_guard", 1)
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "quest_guard_badge",
+                        name = "Sentry Guard Crest",
+                        category = "KEY_ITEM",
+                        description = "Royal badge of valor belonging to the missing castle gate guard.",
+                        quantity = 1,
+                        rarity = "RARE",
+                        value = 200,
+                        isUsable = false,
+                        iconType = "badge"
+                    )
+                }
                 particles.add(
                     Particle(
                         pos = Vector2D(c.pos.x - 20f, c.pos.y - 20f),
@@ -1301,6 +1501,19 @@ class GameEngine(context: Context) {
                 soundEngine.playCrystal()
                 spawnPickupSparkles(c.pos, Color(0xFF00E5FF))
                 sideQuestManager.updateProgress("sq_blacksmith_request", 1)
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "mat_runic_ore",
+                        name = "Runic Mithril Ore",
+                        category = "MATERIAL",
+                        description = "Dense chunk of ore glowing with dormant runic veins. Sought by the village blacksmith.",
+                        quantity = 1,
+                        rarity = "UNCOMMON",
+                        value = 75,
+                        isUsable = false,
+                        iconType = "ore"
+                    )
+                }
                 particles.add(
                     Particle(
                         pos = Vector2D(c.pos.x - 20f, c.pos.y - 20f),
@@ -1325,6 +1538,19 @@ class GameEngine(context: Context) {
                 triggerScreenShake(12f)
                 spawnChestBurst(c.pos)
                 sideQuestManager.updateProgress("sq_secret_shrine", 1)
+                engineScope.launch {
+                    inventoryRepository.addItem(
+                        itemKey = "relic_chalice",
+                        name = "Holy Chalice of Aether",
+                        category = "RELIC",
+                        description = "Gilded ceremonial chalice overflowing with celestial aura. Grants +25 Max HP.",
+                        quantity = 1,
+                        rarity = "LEGENDARY",
+                        value = 750,
+                        isUsable = false,
+                        iconType = "chalice"
+                    )
+                }
                 particles.add(
                     Particle(
                         pos = Vector2D(c.pos.x - 30f, c.pos.y - 30f),
@@ -1345,17 +1571,82 @@ class GameEngine(context: Context) {
                     c.isCollected = true
                     player.openedChests.add(c.id)
                     val isSecret = c.type == CollectibleType.SECRET_CHEST
-                    player.coins += if (isSecret) 120 else 50
-                    player.crystals += if (isSecret) 6 else 3
+                    val coinReward = if (isSecret) 120 else 50
+                    val crystalReward = if (isSecret) 6 else 3
+                    val potionReward = if (isSecret) 2 else 1
+                    player.coins += coinReward
+                    player.crystals += crystalReward
                     player.score += if (isSecret) 600 else 300
                     player.questChestsOpened++
                     if (isSecret) player.secretsFoundCount++
                     player.hasAncientRelic = true
-                    player.potions += if (isSecret) 2 else 1
+                    player.potions += potionReward
 
                     if (c.extraData == "MASTER_KEY") {
                         player.hasMasterKey = true
                         sideQuestManager.updateProgress("sq_ancient_key", 1)
+                    }
+
+                    engineScope.launch {
+                        inventoryRepository.addItem(
+                            itemKey = "coin_gold",
+                            name = "Gold Coins",
+                            category = "TREASURE",
+                            description = "Shining realm currency.",
+                            quantity = coinReward,
+                            rarity = "COMMON",
+                            value = 1,
+                            isUsable = false,
+                            iconType = "coin"
+                        )
+                        inventoryRepository.addItem(
+                            itemKey = "crystal_mana",
+                            name = "Aether Crystal",
+                            category = "MATERIAL",
+                            description = "Vibrant mana cluster.",
+                            quantity = crystalReward,
+                            rarity = "UNCOMMON",
+                            value = 25,
+                            isUsable = true,
+                            iconType = "crystal"
+                        )
+                        inventoryRepository.addItem(
+                            itemKey = "potion_health",
+                            name = "Life Elixir",
+                            category = "CONSUMABLE",
+                            description = "Restores 45 HP.",
+                            quantity = potionReward,
+                            rarity = "COMMON",
+                            value = 20,
+                            isUsable = true,
+                            iconType = "potion_health"
+                        )
+                        if (isSecret) {
+                            inventoryRepository.addItem(
+                                itemKey = "potion_swiftness",
+                                name = "Swiftness Draught",
+                                category = "CONSUMABLE",
+                                description = "Grants +45% move speed and agility for 9 seconds.",
+                                quantity = 1,
+                                rarity = "UNCOMMON",
+                                value = 40,
+                                isUsable = true,
+                                iconType = "potion_speed"
+                            )
+                        }
+                        if (c.extraData == "MASTER_KEY") {
+                            inventoryRepository.addItem(
+                                itemKey = "key_master",
+                                name = "Ancient Master Skeleton Key",
+                                category = "KEY_ITEM",
+                                description = "A master key crafted from shadowstone that bypasses dwarven gate mechanisms.",
+                                quantity = 1,
+                                rarity = "EPIC",
+                                value = 300,
+                                isUsable = false,
+                                iconType = "key"
+                            )
+                        }
                     }
 
                     soundEngine.playChestOpen()
