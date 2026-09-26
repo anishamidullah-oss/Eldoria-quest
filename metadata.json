@@ -1,0 +1,6 @@
+{
+  "name": "The Lost Kingdom",
+  "description": "Original 2D side-scrolling fantasy action-adventure game with human adventurer, responsive platforming, fiery sword combat, forest exploration, parallax layers, and offline play.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
